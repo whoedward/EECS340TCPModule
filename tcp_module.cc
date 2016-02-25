@@ -21,8 +21,6 @@ using std::endl;
 using std::cerr;
 using std::string;
 
-void ConstructTCPPacket();
-
 enum PacketFlags {
     SYN = 0,
     ACK = 1,
@@ -30,6 +28,8 @@ enum PacketFlags {
     FIN = 4,
     FIN_ACK = 5
 };
+
+void ConstructTCPPacket(Packet &, PacketFlags, unsigned int);
 
 int main(int argc, char *argv[])
 {
@@ -61,9 +61,9 @@ int main(int argc, char *argv[])
     if (event.eventtype!=MinetEvent::Dataflow 
 	|| event.direction!=MinetEvent::IN) {
       MinetSendToMonitor(MinetMonitoringEvent("Unknown event ignored."));
+        cerr << "invalid minet event" << endl;
     // if we received a valid event from Minet, do processing
     } else {
-      cerr << "invalid event from Minet" << endl;
       //  Data from the IP layer below  //
       if (event.handle==mux) {
         Packet p;
@@ -140,8 +140,29 @@ int main(int argc, char *argv[])
                     cerr << "At default case" << endl;
                 }
         }
+        cerr << "outside switch statement, sanity check" << endl;
       }
     }
   }
   return 0;
+}
+
+void ConstructTCPPacket(Packet &p, PacketFlags fs, unsigned int size)
+{
+    IPHeader iph;
+    TCPHeader tcph;
+    
+    p.PushHeader(iph);
+
+    switch (fs) {
+        case SYN:
+        case SYN_ACK:
+        case FIN:
+        case FIN_ACK:
+        case ACK:
+        default:
+            break;
+    };
+
+    p.PushBackHeader(iph);
 }

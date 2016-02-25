@@ -28,7 +28,7 @@ enum PacketFlags {
     ACK = 1,
     SYN_ACK = 3,
     FIN = 4,
-    FIN_ACT = 5
+    FIN_ACK = 5
 };
 
 int main(int argc, char *argv[])

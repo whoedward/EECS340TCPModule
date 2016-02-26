@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
         TCPHeader tcph=p.FindHeader(Headers::TCPHeader);
 
         //cerr << "TCP Packet: IP Header is "<< iph <<" and ";
-        cerr << "TCP Header is "<< tcph << " and ";
+        //cerr << "TCP Header is "<< tcph << " and ";
 
         //cerr << "Checksum is " << (tcph.IsCorrectChecksum(p) ? "VALID" : "INVALID");
         Connection c;
@@ -88,10 +88,17 @@ int main(int argc, char *argv[])
         ConnectionList<TCPState>::iterator cs = clist.FindMatching(c);
         cerr << "cs->State is: " << cs->state << endl;
         cs->Print(cerr);
+
+        //TODO: DEBUG STATEMENT
+        if(cs == clist.end()){
+            cerr << "at end of iterator" << endl;
+            c.dest = IPAddress(IP_ADDRESS_ANY);
+            c.destport = PORT_ANY;
+            cerr << " c is: " << c << endl; 
+        }
         unsigned int rcvSeqNum;
         tcph.GetSeqNum(rcvSeqNum);
-        cerr << "rcv seq num is: " << rcvSeqNum << endl;
-        cerr << c << endl; 
+        //cerr << "rcv seq num is: " << rcvSeqNum << endl;
         
         if(tcph.IsCorrectChecksum(p)){
             unsigned char rcvFlags;
@@ -147,13 +154,16 @@ int main(int argc, char *argv[])
   return 0;
 }
 
-void ConstructTCPPacket(Packet &p, PacketFlags fs, unsigned int size)
+void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,PacketFlags fs, unsigned int size)
 {
+    cerr << "=================CONSTRUCTING TCP PACKET============" << endl;
     IPHeader iph;
     TCPHeader tcph;
     
+    iph.SetSourceIP(conState.connection.src);
+    iph.SetDestIP(conState.connection.dest); 
     p.PushHeader(iph);
-
+    
     switch (fs) {
         case SYN:
         case SYN_ACK:

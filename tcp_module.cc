@@ -104,7 +104,7 @@ int main(int argc, char *argv[])
             unsigned char rcvFlags;
             tcph.GetFlags(rcvFlags);
             if(IS_SYN(rcvFlags)){
-                cerr << "RECEVIED A FLAG BITCH" << endl;
+                cerr << "received a flag" << endl;
             }
             if(IS_ACK(rcvFlags)){
                 cerr << "ack'ed a flag" << endl;

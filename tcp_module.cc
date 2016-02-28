@@ -31,6 +31,8 @@ enum PacketFlags {
 
 void ConstructTCPPacket(Packet &, ConnectionToStateMapping<TCPState> &,PacketFlags, unsigned long, unsigned long);
 
+bool ConnectionEquals(ConnectionList<TCPState>::iterator, ConnectionList<TCPState>::iterator);
+
 int main(int argc, char *argv[])
 {
   MinetHandle mux, sock;
@@ -54,6 +56,11 @@ int main(int argc, char *argv[])
 
   MinetEvent event;
   ConnectionList<TCPState> clist = ConnectionList<TCPState>();
+  //push a dummy connection for clist.end() comparisons
+  Connection dummyConnection = Connection();
+  TCPState dummyState = TCPState(0, CLOSED, 0);
+  ConnectionToStateMapping<TCPState> dummy(dummyConnection, 0, dummyState, false);
+  clist.push_back(dummy);
   while (MinetGetNextEvent(event) == 0){
     // if we received an unexpected type of event, print error
         cerr << "sanity check" << endl;
@@ -84,14 +91,15 @@ int main(int argc, char *argv[])
         iph.GetProtocol(c.protocol);
         tcph.GetDestPort(c.srcport);
         tcph.GetSourcePort(c.destport);
-                
+        
+        clist.Print(cerr);        
         ConnectionList<TCPState>::iterator cs = clist.FindMatching(c);
         //cerr << "cs->State is: " << cs->state << endl;
         //cs->Print(cerr);
-        cerr << "Printing connectionlist" << endl;
-        clist.Print(cerr);
-        //TODO: DEBUG STATEMENT
-        if(cs == clist.end()){
+        //cerr << "Silly debug statement\n\n";
+        //cerr << cs->connection.dest;
+        //cerr << clist.end()->connection.dest;
+        if(ConnectionEquals(cs,clist.end())){
             cerr << "at end of iterator" << endl;
             c.dest = IPAddress(IP_ADDRESS_ANY);
             c.destport = PORT_ANY;
@@ -99,7 +107,7 @@ int main(int argc, char *argv[])
         }
         unsigned int rcvSeqNum;
         tcph.GetSeqNum(rcvSeqNum);
-        cerr << "rcv seq num is: " << rcvSeqNum << endl;
+        //cerr << "rcv seq num is: " << rcvSeqNum << endl;
         
         if(tcph.IsCorrectChecksum(p)){
             unsigned char rcvFlags;
@@ -115,9 +123,13 @@ int main(int argc, char *argv[])
                     if(IS_SYN(rcvFlags)){
                         //send syn_ack
                         Packet sendp;
-                        //ConstructTCPPacket(sendp, )
+                        unsigned long sendAckNum = rcvSeqNum + 0;//1?
+                        unsigned long startSendSeqNum = 0;
+                        ConstructTCPPacket(sendp, *cs, SYN_ACK, startSendSeqNum, sendAckNum);
                         //increment sequence number
                         cs->state.SetState(SYN_RCVD);
+                        cs->connection.dest = c.dest;
+                        MinetSend(mux, sendp);
                     }
 
             }
@@ -147,7 +159,7 @@ int main(int argc, char *argv[])
                                                                3,
                                                                tcpstate,
                                                                false);
-                    clist.push_back(mapping);
+                    clist.push_front(mapping);
 
                     SockRequestResponse repl;
                     repl.type = STATUS;
@@ -176,6 +188,23 @@ int main(int argc, char *argv[])
   return 0;
 }
 
+bool ConnectionEquals(ConnectionList<TCPState>::iterator c1, ConnectionList<TCPState>::iterator c2)
+{
+    bool equal = true;
+    if(c1->connection.dest != c2->connection.dest){
+        equal = false;
+    } else if (c1->connection.src != c2->connection.src) {
+        equal = false;
+    } else if (c1->connection.srcport != c2->connection.srcport) {
+        equal = false;
+    } else if (c1->connection.srcport != c2->connection.srcport) {
+        equal = false;
+    } else if (c1->connection.protocol != c2->connection.protocol) {
+        equal = false;
+    }
+    return equal;
+}
+
 void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,PacketFlags fs, unsigned long seqNum, unsigned long ackNum)
 {
     cerr << "=================CONSTRUCTING TCP PACKET============" << endl;
@@ -187,8 +216,10 @@ void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,
     iph.SetDestIP(conState.connection.dest); 
     iph.SetTotalLength(TCP_HEADER_BASE_LENGTH + IP_HEADER_BASE_LENGTH);
     //make this random
-    //iph.SetID(id)
-    p.PushHeader(iph);
+    unsigned short id = 5;
+    iph.SetID(id);
+    iph.SetTTL(30);
+    p.PushFrontHeader(iph);
     
     tcph.SetSourcePort(conState.connection.srcport, p);
     tcph.SetDestPort(conState.connection.destport, p);
@@ -201,7 +232,6 @@ void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,
     //we don't use options or urgent because h
     tcph.SetUrgentPtr(0, p);
     //tcph.SetOptions(0, p);
-    
     unsigned char newFlags = 0;
     switch (fs) {
         case SYN:
@@ -225,5 +255,6 @@ void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,
     };
     tcph.SetFlags(newFlags, p);
     p.PushBackHeader(tcph);
+    cerr << p;
 }
 

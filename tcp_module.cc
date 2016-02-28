@@ -22,11 +22,11 @@ using std::cerr;
 using std::string;
 
 enum PacketFlags {
-    SYN = 0,
-    ACK = 1,
-    SYN_ACK = 3,
-    FIN = 4,
-    FIN_ACK = 5
+  SYN = 0,
+  ACK = 1,
+  SYN_ACK = 3,
+  FIN = 4,
+  FIN_ACK = 5
 };
 
 void ConstructTCPPacket(Packet &, ConnectionToStateMapping<TCPState> &,PacketFlags, unsigned long, unsigned long);
@@ -63,13 +63,13 @@ int main(int argc, char *argv[])
   clist.push_back(dummy);
   while (MinetGetNextEvent(event) == 0){
     // if we received an unexpected type of event, print error
-        cerr << "sanity check" << endl;
+    cerr << "sanity check" << endl;
 
     if (event.eventtype!=MinetEvent::Dataflow 
 	|| event.direction!=MinetEvent::IN) {
       MinetSendToMonitor(MinetMonitoringEvent("Unknown event ignored."));
-        cerr << "invalid minet event" << endl;
-    // if we received a valid event from Minet, do processing
+      cerr << "invalid minet event" << endl;
+      // if we received a valid event from Minet, do processing
     } else {
       //  Data from the IP layer below  //
       if (event.handle==mux) {
@@ -100,86 +100,84 @@ int main(int argc, char *argv[])
         //cerr << cs->connection.dest;
         //cerr << clist.end()->connection.dest;
         if(ConnectionEquals(cs,clist.end())){
-            cerr << "at end of iterator" << endl;
-            c.dest = IPAddress(IP_ADDRESS_ANY);
-            c.destport = PORT_ANY;
-            cerr << " c is: " << c << endl; 
+          cerr << "at end of iterator" << endl;
+          c.dest = IPAddress(IP_ADDRESS_ANY);
+          c.destport = PORT_ANY;
+          cerr << " c is: " << c << endl; 
         }
         unsigned int rcvSeqNum;
         tcph.GetSeqNum(rcvSeqNum);
         //cerr << "rcv seq num is: " << rcvSeqNum << endl;
         
         if(tcph.IsCorrectChecksum(p)){
-            unsigned char rcvFlags;
-            tcph.GetFlags(rcvFlags);
-            //if(IS_SYN(rcvFlags)){
-            //    cerr << "received a flag" << endl;
-            //}
-            //if(IS_ACK(rcvFlags)){
-            //    cerr << "ack'ed a flag" << endl;
-            //}
-            switch(cs->state.GetState()){
-                case LISTEN:
-                    if(IS_SYN(rcvFlags)){
-                        //send syn_ack
-                        Packet sendp;
-                        unsigned long sendAckNum = rcvSeqNum + 0;//1?
-                        unsigned long startSendSeqNum = 0;
-                        ConstructTCPPacket(sendp, *cs, SYN_ACK, startSendSeqNum, sendAckNum);
-                        //increment sequence number
-                        cs->state.SetState(SYN_RCVD);
-                        cs->connection.dest = c.dest;
-                        MinetSend(mux, sendp);
-                    }
-
-            }
-        } else{
-            //incorrect checksum
+          unsigned char rcvFlags;
+          tcph.GetFlags(rcvFlags);
+          //if(IS_SYN(rcvFlags)){
+          //    cerr << "received a flag" << endl;
+          //}
+          //if(IS_ACK(rcvFlags)){
+          //    cerr << "ack'ed a flag" << endl;
+          //}
+          switch(cs->state.GetState()){
+            case LISTEN:
+              if(IS_SYN(rcvFlags)){
+                //send syn_ack
+                Packet sendp;
+                unsigned long sendAckNum = rcvSeqNum + 0;//1?
+                unsigned long startSendSeqNum = 0;
+                ConstructTCPPacket(sendp, *cs, SYN_ACK, startSendSeqNum, sendAckNum);
+                //increment sequence number
+                cs->state.SetState(SYN_RCVD);
+                cs->connection.dest = c.dest;
+                MinetSend(mux, sendp);
+              }
+          }
+        } else {
+          //incorrect checksum
         }   
       }
-          //  Data from the Sockets layer above  //
+      //  Data from the Sockets layer above  //
       if (event.handle==sock) {
         SockRequestResponse s;
         MinetReceive(sock,s);
         cerr << "Received Socket Request:" << s << endl;
 
         switch(s.type){
-            case CONNECT:
-                {
-                    cerr << "Socket connected" << endl;
-                }
-                break;
-            case ACCEPT:
-                {   
-                    //Passive open
-                    //closed -> listeni
-                    TCPState tcpstate(0, LISTEN, 3);
-                    
-                    ConnectionToStateMapping<TCPState> mapping(s.connection,
-                                                               3,
-                                                               tcpstate,
-                                                               false);
-                    clist.push_front(mapping);
+          case CONNECT:
+          {
+            cerr << "Socket connected" << endl;
+          }
+            break;
+          case ACCEPT:
+          {   
+            //Passive open
+            //closed -> listeni
+            TCPState tcpstate(0, LISTEN, 3);
+            ConnectionToStateMapping<TCPState> mapping(s.connection,
+                                                       3,
+                                                       tcpstate,
+                                                       false);
+            clist.push_front(mapping);
 
-                    SockRequestResponse repl;
-                    repl.type = STATUS;
-                    repl.connection = s.connection;
-                    //buffer is zero bytes
-                    repl.bytes = 0;
-                    repl.error = EOK;
-                    MinetSend(sock,repl);
-                    cerr << "Accepted socket request" << endl;
-                }
-                break;
-            default:
-                {
-                    SockRequestResponse repl;
-                    // repl.type = SockRequestResponse::STATUS;
-                    repl.type = STATUS;
-                    repl.error = EWHAT;
-                    MinetSend(sock,repl);
-                    cerr << "At default case" << endl;
-                }
+            SockRequestResponse repl;
+            repl.type = STATUS;
+            repl.connection = s.connection;
+            //buffer is zero bytes
+            repl.bytes = 0;
+            repl.error = EOK;
+            MinetSend(sock,repl);
+            cerr << "Accepted socket request" << endl;
+          }
+          break;
+          default:
+          {
+            SockRequestResponse repl;
+            // repl.type = SockRequestResponse::STATUS;
+            repl.type = STATUS;
+            repl.error = EWHAT;
+            MinetSend(sock,repl);
+            cerr << "At default case" << endl;
+          }
         }
         cerr << "outside switch statement, sanity check" << endl;
       }
@@ -190,71 +188,71 @@ int main(int argc, char *argv[])
 
 bool ConnectionEquals(ConnectionList<TCPState>::iterator c1, ConnectionList<TCPState>::iterator c2)
 {
-    bool equal = true;
-    if(c1->connection.dest != c2->connection.dest){
-        equal = false;
-    } else if (c1->connection.src != c2->connection.src) {
-        equal = false;
-    } else if (c1->connection.srcport != c2->connection.srcport) {
-        equal = false;
-    } else if (c1->connection.srcport != c2->connection.srcport) {
-        equal = false;
-    } else if (c1->connection.protocol != c2->connection.protocol) {
-        equal = false;
-    }
-    return equal;
+  bool equal = true;
+  if(c1->connection.dest != c2->connection.dest){
+    equal = false;
+  } else if (c1->connection.src != c2->connection.src) {
+    equal = false;
+  } else if (c1->connection.srcport != c2->connection.srcport) {
+    equal = false;
+  } else if (c1->connection.srcport != c2->connection.srcport) {
+    equal = false;
+  } else if (c1->connection.protocol != c2->connection.protocol) {
+    equal = false;
+  }
+  return equal;
 }
 
 void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,PacketFlags fs, unsigned long seqNum, unsigned long ackNum)
 {
-    cerr << "=================CONSTRUCTING TCP PACKET============" << endl;
-    IPHeader iph;
-    TCPHeader tcph;
-    
-    iph.SetProtocol(IP_PROTO_TCP);
-    iph.SetSourceIP(conState.connection.src);
-    iph.SetDestIP(conState.connection.dest); 
-    iph.SetTotalLength(TCP_HEADER_BASE_LENGTH + IP_HEADER_BASE_LENGTH);
-    //make this random
-    unsigned short id = 5;
-    iph.SetID(id);
-    iph.SetTTL(30);
-    p.PushFrontHeader(iph);
-    
-    tcph.SetSourcePort(conState.connection.srcport, p);
-    tcph.SetDestPort(conState.connection.destport, p);
-    //set seq number based on the one stored in c2statemapping
-    tcph.SetSeqNum(seqNum, p);    
-    //also ack number
-    tcph.SetAckNum(ackNum, p);
-    //6 because 6 bytes see tcppacket ascii art
-    tcph.SetHeaderLen(6, p);
-    //we don't use options or urgent because h
-    tcph.SetUrgentPtr(0, p);
-    //tcph.SetOptions(0, p);
-    unsigned char newFlags = 0;
-    switch (fs) {
-        case SYN:
-            SET_SYN(newFlags);
-            break;
-        case SYN_ACK:
-            SET_SYN(newFlags);
-            SET_ACK(newFlags);
-            break;
-        case FIN:
-            SET_FIN(newFlags);
-            break;
-        case FIN_ACK:
-            SET_FIN(newFlags);
-            break;
-        case ACK:
-            SET_ACK(newFlags);
-            break;
-        default:
-            break;
-    };
-    tcph.SetFlags(newFlags, p);
-    p.PushBackHeader(tcph);
-    cerr << p;
+  cerr << "=================CONSTRUCTING TCP PACKET============" << endl;
+  IPHeader iph;
+  TCPHeader tcph;
+  
+  iph.SetProtocol(IP_PROTO_TCP);
+  iph.SetSourceIP(conState.connection.src);
+  iph.SetDestIP(conState.connection.dest); 
+  iph.SetTotalLength(TCP_HEADER_BASE_LENGTH + IP_HEADER_BASE_LENGTH);
+  //make this random
+  unsigned short id = 5;
+  iph.SetID(id);
+  iph.SetTTL(30);
+  p.PushFrontHeader(iph);
+  
+  tcph.SetSourcePort(conState.connection.srcport, p);
+  tcph.SetDestPort(conState.connection.destport, p);
+  //set seq number based on the one stored in c2statemapping
+  tcph.SetSeqNum(seqNum, p);    
+  //also ack number
+  tcph.SetAckNum(ackNum, p);
+  //6 because 6 bytes see tcppacket ascii art
+  tcph.SetHeaderLen(6, p);
+  //we don't use options or urgent because h
+  tcph.SetUrgentPtr(0, p);
+  //tcph.SetOptions(0, p);
+  unsigned char newFlags = 0;
+  switch (fs) {
+    case SYN:
+      SET_SYN(newFlags);
+      break;
+    case SYN_ACK:
+      SET_SYN(newFlags);
+      SET_ACK(newFlags);
+      break;
+    case FIN:
+      SET_FIN(newFlags);
+      break;
+    case FIN_ACK:
+      SET_FIN(newFlags);
+      break;
+    case ACK:
+      SET_ACK(newFlags);
+      break;
+    default:
+      break;
+  };
+  tcph.SetFlags(newFlags, p);
+  p.PushBackHeader(tcph);
+  cerr << p;
 }
 

@@ -125,10 +125,19 @@ int main(int argc, char *argv[])
                 Packet sendp;
                 unsigned long sendAckNum = rcvSeqNum + 0;//1?
                 unsigned long startSendSeqNum = 0;
-                ConstructTCPPacket(sendp, *cs, SYN_ACK, startSendSeqNum, sendAckNum);
                 //increment sequence number
                 cs->state.SetState(SYN_RCVD);
                 cs->connection.dest = c.dest;
+                cs->connection.destport = c.destport;
+                cs->connection.srcport = c.srcport;
+                ConstructTCPPacket(sendp, *cs, SYN_ACK, startSendSeqNum, sendAckNum);
+                sendp.ExtractHeaderFromPayload<TCPHeader>(tcphlen);
+                IPHeader siph= sendp.FindHeader(Headers::IPHeader);
+                TCPHeader stcph = sendp.FindHeader(Headers::TCPHeader);
+                cerr << "\nPrinting sent IPHeader\n";
+                siph.Print(cerr);
+                cerr << "\nPrinting sent TCPHeader\n";
+                stcph.Print(cerr);
                 MinetSend(mux, sendp);
               }
           }
@@ -226,10 +235,14 @@ void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,
   //also ack number
   tcph.SetAckNum(ackNum, p);
   //6 because 6 bytes see tcppacket ascii art
-  tcph.SetHeaderLen(6, p);
-  //we don't use options or urgent because h
+  tcph.SetHeaderLen(5, p);
+  //blank options stuff
+  //TCPOptions blank;
+  //blank.len = 0;
+  //memset(blank.data,0,TCP_HEADER_OPTION_MAX_LENGTH);
+  //tcph.SetOptions(blank);
+  //no use for thi
   tcph.SetUrgentPtr(0, p);
-  //tcph.SetOptions(0, p);
   unsigned char newFlags = 0;
   switch (fs) {
     case SYN:
@@ -252,6 +265,7 @@ void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,
       break;
   };
   tcph.SetFlags(newFlags, p);
+  tcph.SetWinSize(65535, p);
   p.PushBackHeader(tcph);
   cerr << p;
 }

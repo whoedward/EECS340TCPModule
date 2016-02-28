@@ -87,7 +87,7 @@ int main(int argc, char *argv[])
                 
         ConnectionList<TCPState>::iterator cs = clist.FindMatching(c);
         cerr << "cs->State is: " << cs->state << endl;
-        cs->Print(cerr);
+        //cs->Print(cerr);
 
         //TODO: DEBUG STATEMENT
         if(cs == clist.end()){
@@ -98,16 +98,25 @@ int main(int argc, char *argv[])
         }
         unsigned int rcvSeqNum;
         tcph.GetSeqNum(rcvSeqNum);
-        //cerr << "rcv seq num is: " << rcvSeqNum << endl;
+        cerr << "rcv seq num is: " << rcvSeqNum << endl;
         
         if(tcph.IsCorrectChecksum(p)){
             unsigned char rcvFlags;
             tcph.GetFlags(rcvFlags);
-            if(IS_SYN(rcvFlags)){
-                cerr << "received a flag" << endl;
-            }
-            if(IS_ACK(rcvFlags)){
-                cerr << "ack'ed a flag" << endl;
+            //if(IS_SYN(rcvFlags)){
+            //    cerr << "received a flag" << endl;
+            //}
+            //if(IS_ACK(rcvFlags)){
+            //    cerr << "ack'ed a flag" << endl;
+            //}
+            switch(cs->state.GetState()){
+                case LISTEN:
+                    if(IS_SYN(rcvFlags)){
+                        //send syn_ack
+                        //increment sequence number
+                        cs->state.SetState(SYN_RCVD);
+                    }
+
             }
         } else{
             //incorrect checksum
@@ -126,7 +135,17 @@ int main(int argc, char *argv[])
                 }
                 break;
             case ACCEPT:
-                {   //ignored, send ok response
+                {   
+                    //Passive open
+                    //closed -> listeni
+                    TCPState tcpstate(0, LISTEN, 3);
+                    
+                    ConnectionToStateMapping<TCPState> mapping(s.connection,
+                                                               3,
+                                                               tcpstate,
+                                                               false);
+                    clist.push_back(mapping);
+
                     SockRequestResponse repl;
                     repl.type = STATUS;
                     repl.connection = s.connection;

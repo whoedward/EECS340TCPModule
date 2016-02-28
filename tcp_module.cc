@@ -29,7 +29,7 @@ enum PacketFlags {
     FIN_ACK = 5
 };
 
-void ConstructTCPPacket(Packet &, PacketFlags, unsigned int);
+void ConstructTCPPacket(Packet &, ConnectionToStateMapping<TCPState> &,PacketFlags, unsigned long, unsigned long);
 
 int main(int argc, char *argv[])
 {
@@ -86,9 +86,10 @@ int main(int argc, char *argv[])
         tcph.GetSourcePort(c.destport);
                 
         ConnectionList<TCPState>::iterator cs = clist.FindMatching(c);
-        cerr << "cs->State is: " << cs->state << endl;
+        //cerr << "cs->State is: " << cs->state << endl;
         //cs->Print(cerr);
-
+        cerr << "Printing connectionlist" << endl;
+        clist.Print(cerr);
         //TODO: DEBUG STATEMENT
         if(cs == clist.end()){
             cerr << "at end of iterator" << endl;
@@ -113,6 +114,8 @@ int main(int argc, char *argv[])
                 case LISTEN:
                     if(IS_SYN(rcvFlags)){
                         //send syn_ack
+                        Packet sendp;
+                        //ConstructTCPPacket(sendp, )
                         //increment sequence number
                         cs->state.SetState(SYN_RCVD);
                     }
@@ -173,25 +176,54 @@ int main(int argc, char *argv[])
   return 0;
 }
 
-void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,PacketFlags fs, unsigned int size)
+void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,PacketFlags fs, unsigned long seqNum, unsigned long ackNum)
 {
     cerr << "=================CONSTRUCTING TCP PACKET============" << endl;
     IPHeader iph;
     TCPHeader tcph;
     
+    iph.SetProtocol(IP_PROTO_TCP);
     iph.SetSourceIP(conState.connection.src);
     iph.SetDestIP(conState.connection.dest); 
+    iph.SetTotalLength(TCP_HEADER_BASE_LENGTH + IP_HEADER_BASE_LENGTH);
+    //make this random
+    //iph.SetID(id)
     p.PushHeader(iph);
     
+    tcph.SetSourcePort(conState.connection.srcport, p);
+    tcph.SetDestPort(conState.connection.destport, p);
+    //set seq number based on the one stored in c2statemapping
+    tcph.SetSeqNum(seqNum, p);    
+    //also ack number
+    tcph.SetAckNum(ackNum, p);
+    //6 because 6 bytes see tcppacket ascii art
+    tcph.SetHeaderLen(6, p);
+    //we don't use options or urgent because h
+    tcph.SetUrgentPtr(0, p);
+    //tcph.SetOptions(0, p);
+    
+    unsigned char newFlags = 0;
     switch (fs) {
         case SYN:
+            SET_SYN(newFlags);
+            break;
         case SYN_ACK:
+            SET_SYN(newFlags);
+            SET_ACK(newFlags);
+            break;
         case FIN:
+            SET_FIN(newFlags);
+            break;
         case FIN_ACK:
+            SET_FIN(newFlags);
+            break;
         case ACK:
+            SET_ACK(newFlags);
+            break;
         default:
             break;
     };
-
-    p.PushBackHeader(iph);
+    tcph.SetFlags(newFlags, p);
+    p.PushBackHeader(tcph);
 }
+

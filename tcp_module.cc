@@ -61,9 +61,9 @@ int main(int argc, char *argv[])
   TCPState dummyState = TCPState(0, CLOSED, 0);
   ConnectionToStateMapping<TCPState> dummy(dummyConnection, 0, dummyState, false);
   clist.push_back(dummy);
+
+  double timeout; //2nd arg timeout
   while (MinetGetNextEvent(event) == 0){
-    // if we received an unexpected type of event, print error
-    cerr << "sanity check" << endl;
 
     if (event.eventtype!=MinetEvent::Dataflow 
 	|| event.direction!=MinetEvent::IN) {
@@ -92,7 +92,7 @@ int main(int argc, char *argv[])
         tcph.GetDestPort(c.srcport);
         tcph.GetSourcePort(c.destport);
         
-        clist.Print(cerr);        
+        //clist.Print(cerr);        
         ConnectionList<TCPState>::iterator cs = clist.FindMatching(c);
         //cerr << "cs->State is: " << cs->state << endl;
         //cs->Print(cerr);
@@ -107,6 +107,8 @@ int main(int argc, char *argv[])
         }
         unsigned int rcvSeqNum;
         tcph.GetSeqNum(rcvSeqNum);
+        unsigned int rcvAckNum;
+        tcph.GetAckNum(rcvAckNum);
         //cerr << "rcv seq num is: " << rcvSeqNum << endl;
         
         if(tcph.IsCorrectChecksum(p)){
@@ -120,13 +122,16 @@ int main(int argc, char *argv[])
           //}
           switch(cs->state.GetState()){
             case LISTEN:
-              if(IS_SYN(rcvFlags)){
+              if(IS_SYN(rcvFlags) && !IS_ACK(rcvFlags) || IS_RST(rcvFlags)){
+                cerr << "Listen state\n";
                 //send syn_ack
                 Packet sendp;
-                unsigned long sendAckNum = rcvSeqNum + 0;//1?
+                unsigned long sendAckNum = rcvSeqNum + 1;//1?
                 unsigned long startSendSeqNum = 0;
+                unsigned short winSize = 14600;
+                cs->state.SetLastSent(startSendSeqNum);
+                cs->state.SetSendRwnd(winSize);
                 //increment sequence number
-                cs->state.SetState(SYN_RCVD);
                 cs->connection.dest = c.dest;
                 cs->connection.destport = c.destport;
                 cs->connection.srcport = c.srcport;
@@ -134,12 +139,54 @@ int main(int argc, char *argv[])
                 sendp.ExtractHeaderFromPayload<TCPHeader>(tcphlen);
                 IPHeader siph= sendp.FindHeader(Headers::IPHeader);
                 TCPHeader stcph = sendp.FindHeader(Headers::TCPHeader);
-                cerr << "\nPrinting sent IPHeader\n";
-                siph.Print(cerr);
-                cerr << "\nPrinting sent TCPHeader\n";
-                stcph.Print(cerr);
+                //cerr << "\nPrinting sent IPHeader\n";
+                //siph.Print(cerr);
+                //cerr << "\nPrinting sent TCPHeader\n";
+                //stcph.Print(cerr);
                 MinetSend(mux, sendp);
+                cs->state.SetState(SYN_RCVD);
+                //window size
               }
+              break;
+            case SYN_RCVD:
+              cerr << "Syn_rcvd state\n";
+              //looking for ack num 0
+              if (rcvAckNum == 1){
+                //p.Print(cerr);
+                cerr << "received acknum 1";
+                cs->state.SetState(ESTABLISHED);
+              }
+              break;
+            case ESTABLISHED:
+              cerr << "Established state\n";
+              //fin case
+              cerr << "Received packet's header\n";
+              tcph.Print(cerr);
+              if (IS_FIN(rcvFlags)){
+                cerr << "its a fin\n";
+                //send ack
+                Packet sendp;
+                unsigned long sendAckNum = rcvSeqNum;
+                unsigned long sendSeqNum = rcvAckNum + 1;
+                ConstructTCPPacket(sendp, *cs, ACK, sendSeqNum, sendAckNum);
+                MinetSend(mux, sendp);
+                cs->state.SetState(CLOSE_WAIT);
+              } else {
+                //reading in data n stuff. just ack it
+                cerr << p;
+                Packet sendp;
+                unsigned long sendAckNum = rcvSeqNum;
+                unsigned long sendSeqNum = rcvAckNum + 1;
+                ConstructTCPPacket(sendp, *cs, ACK, sendSeqNum, sendAckNum);
+                //MinetSend(mux, sendp);
+                //probably send something to scoket
+              }
+              break;
+            case CLOSE_WAIT:
+              cerr << "CLOSE_WAIT";
+              break;
+            default:
+              cerr << "HELP";
           }
         } else {
           //incorrect checksum
@@ -178,6 +225,9 @@ int main(int argc, char *argv[])
             cerr << "Accepted socket request" << endl;
           }
           break;
+          case CLOSE:
+            //TODO
+            break;
           default:
           {
             SockRequestResponse repl;
@@ -223,7 +273,7 @@ void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,
   iph.SetDestIP(conState.connection.dest); 
   iph.SetTotalLength(TCP_HEADER_BASE_LENGTH + IP_HEADER_BASE_LENGTH);
   //make this random
-  unsigned short id = 5;
+  unsigned short id = rand() % 65535;
   iph.SetID(id);
   iph.SetTTL(30);
   p.PushFrontHeader(iph);
@@ -265,8 +315,8 @@ void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,
       break;
   };
   tcph.SetFlags(newFlags, p);
-  tcph.SetWinSize(65535, p);
+  tcph.SetWinSize(14600, p);
   p.PushBackHeader(tcph);
-  cerr << p;
+  tcph.Print(cerr);
 }
 

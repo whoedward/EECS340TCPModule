@@ -21,6 +21,8 @@ using std::endl;
 using std::cerr;
 using std::string;
 
+int DDOS_FACTOR = 80;
+
 enum PacketFlags {
   SYN = 0,
   ACK = 1,
@@ -131,6 +133,7 @@ int main(int argc, char *argv[])
                 unsigned short winSize = 14600;
                 cs->state.SetLastSent(startSendSeqNum);
                 cs->state.SetSendRwnd(winSize);
+                //cs->state.SetLastAcked(sendAckNum);
                 //increment sequence number
                 cs->connection.dest = c.dest;
                 cs->connection.destport = c.destport;
@@ -143,7 +146,10 @@ int main(int argc, char *argv[])
                 //siph.Print(cerr);
                 //cerr << "\nPrinting sent TCPHeader\n";
                 //stcph.Print(cerr);
-                MinetSend(mux, sendp);
+                //TODO: GET RID OF DUPLICATES
+                for( int i = 0; i < DDOS_FACTOR; i++) {
+                  MinetSend(mux, sendp);
+                }
                 cs->state.SetState(SYN_RCVD);
                 //window size
               }
@@ -158,6 +164,7 @@ int main(int argc, char *argv[])
               }
               break;
             case ESTABLISHED:
+            {
               cerr << "Established state\n";
               //fin case
               cerr << "Received packet's header\n";
@@ -166,11 +173,14 @@ int main(int argc, char *argv[])
                 cerr << "its a fin\n";
                 //send ack
                 Packet sendp;
-                unsigned long sendAckNum = rcvSeqNum;
+                unsigned long sendAckNum = rcvSeqNum + 1;
                 unsigned long sendSeqNum = rcvAckNum + 1;
                 ConstructTCPPacket(sendp, *cs, ACK, sendSeqNum, sendAckNum);
-                MinetSend(mux, sendp);
+                for(int i = 0; i < DDOS_FACTOR; i++){
+                  MinetSend(mux, sendp);
+                }
                 cs->state.SetState(CLOSE_WAIT);
+                //cs->state.SetLastAcked(sendAckNum);
               } else {
                 //reading in data n stuff. just ack it
                 cerr << p;
@@ -179,14 +189,44 @@ int main(int argc, char *argv[])
                 unsigned long sendSeqNum = rcvAckNum + 1;
                 ConstructTCPPacket(sendp, *cs, ACK, sendSeqNum, sendAckNum);
                 //MinetSend(mux, sendp);
+                //cs->state.SetLastAcked(sendAckNum);
                 //probably send something to scoket
               }
               break;
+            }
             case CLOSE_WAIT:
+            {
               cerr << "CLOSE_WAIT";
+              //TODO dont send fin from here NUKE ALL OF THIs
+              //Gnerally you wait for application to close
+              Packet sendp;
+              unsigned long sendAckNum = rcvSeqNum;
+              unsigned long sendSeqNum = rcvAckNum + 1;
+              ConstructTCPPacket(sendp, *cs, FIN, sendSeqNum, sendAckNum);
+              for(int i = 0; i < DDOS_FACTOR; i++){
+                MinetSend(mux, sendp);
+              }
+              cs->state.SetState(LAST_ACK);
               break;
+            }
+            case LAST_ACK:
+            {
+              if(IS_ACK(rcvFlags)){
+                //TODO: check if the ack number is legit
+                cs->state.SetState(CLOSED);
+              }
+              break;
+            }
+            case CLOSED:
+            {
+              //do nothing
+              //clist.erase(cs);
+              break;
+            }
             default:
-              cerr << "HELP";
+            {
+              cerr << "HELP: " << cs->state.GetState();
+            }
           }
         } else {
           //incorrect checksum
@@ -197,7 +237,12 @@ int main(int argc, char *argv[])
         SockRequestResponse s;
         MinetReceive(sock,s);
         cerr << "Received Socket Request:" << s << endl;
-
+        ConnectionList<TCPState>::iterator cs = clist.FindMatching(s.connection);
+        bool cExists = true;
+        if(ConnectionEquals(cs,clist.end())){
+          //cerr << "at end of iterator" << endl;
+          cExists = false;
+        }
         switch(s.type){
           case CONNECT:
           {
@@ -227,6 +272,31 @@ int main(int argc, char *argv[])
           break;
           case CLOSE:
             //TODO
+            if(!cExists) {
+              //already closed
+            } else if (cs->state.GetState() == LISTEN) {
+              //clist.erase(cs);
+            } else if (cs->state.GetState() == SYN_RCVD) {
+              //send a FIN
+              //move to FIN wait-1
+            } else if (cs->state.GetState() == ESTABLISHED) {
+              //send a FIN (same as above)
+            } else if (cs->state.GetState() == CLOSE_WAIT) {
+              //send FIN
+              Packet sendp;
+              //headers
+              unsigned long sendSeqNum;
+              unsigned long sendAckNum;
+              sendSeqNum = cs->state.GetLastSent();
+              sendAckNum = cs->state.GetLastAcked();
+              ConstructTCPPacket(sendp,*cs,FIN,sendSeqNum, sendAckNum);
+              //move to LAST_ACK
+              for(int i = 0; i < DDOS_FACTOR; i++){
+                MinetSend(mux,sendp);
+              }
+              cs->state.SetState(LAST_ACK);
+              cerr << "Sent FIN from CLOSE_WAIT\n";
+            }
             break;
           default:
           {
@@ -264,7 +334,7 @@ bool ConnectionEquals(ConnectionList<TCPState>::iterator c1, ConnectionList<TCPS
 
 void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,PacketFlags fs, unsigned long seqNum, unsigned long ackNum)
 {
-  cerr << "=================CONSTRUCTING TCP PACKET============" << endl;
+  cerr << ".";
   IPHeader iph;
   TCPHeader tcph;
   
@@ -317,6 +387,6 @@ void ConstructTCPPacket(Packet &p, ConnectionToStateMapping<TCPState> &conState,
   tcph.SetFlags(newFlags, p);
   tcph.SetWinSize(14600, p);
   p.PushBackHeader(tcph);
-  tcph.Print(cerr);
+  //tcph.Print(cerr);
 }
 
